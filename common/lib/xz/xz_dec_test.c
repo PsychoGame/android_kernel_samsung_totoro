@@ -10,7 +10,7 @@
 #include <linux/kernel.h>
 #include <linux/module.h>
 #include <linux/fs.h>
-#include <asm/uaccess.h>
+#include <linux/uaccess.h>
 #include <linux/crc32.h>
 #include <linux/xz.h>
 
@@ -99,8 +99,8 @@ static int xz_dec_test_release(struct inode *i, struct file *f)
  * The .xz file must have exactly one Stream and no Stream Padding. The data
  * after the first Stream is considered to be garbage.
  */
-static ssize_t xz_dec_test_write(struct file *file,
-		const char __user *buf, size_t size, loff_t *pos)
+static ssize_t xz_dec_test_write(struct file *file, const char __user *buf,
+				 size_t size, loff_t *pos)
 {
 	size_t remaining;
 
@@ -182,7 +182,7 @@ static int __init xz_dec_test_init(void)
 		.write = &xz_dec_test_write
 	};
 
-	state = xz_dec_init(DICT_MAX);
+	state = xz_dec_init(XZ_PREALLOC, DICT_MAX);
 	if (state == NULL)
 		return -ENOMEM;
 

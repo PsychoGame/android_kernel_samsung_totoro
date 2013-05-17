@@ -77,13 +77,15 @@ struct xz_dec_bcj {
 
 #ifdef XZ_DEC_X86
 /*
- * This is macro used to test the most significant byte of a memory address
+ * This is used to test the most significant byte of a memory address
  * in an x86 instruction.
  */
-#define bcj_x86_test_msbyte(b) ((b) == 0x00 || (b) == 0xFF)
+static inline int bcj_x86_test_msbyte(uint8_t b)
+{
+	return b == 0x00 || b == 0xFF;
+}
 
-static noinline_for_stack size_t XZ_FUNC bcj_x86(
-		struct xz_dec_bcj *s, uint8_t *buf, size_t size)
+static size_t bcj_x86(struct xz_dec_bcj *s, uint8_t *buf, size_t size)
 {
 	static const bool mask_to_allowed_status[8]
 		= { true, true, true, false, true, false, false, false };
@@ -155,8 +157,7 @@ static noinline_for_stack size_t XZ_FUNC bcj_x86(
 #endif
 
 #ifdef XZ_DEC_POWERPC
-static noinline_for_stack size_t XZ_FUNC bcj_powerpc(
-		struct xz_dec_bcj *s, uint8_t *buf, size_t size)
+static size_t bcj_powerpc(struct xz_dec_bcj *s, uint8_t *buf, size_t size)
 {
 	size_t i;
 	uint32_t instr;
@@ -177,8 +178,7 @@ static noinline_for_stack size_t XZ_FUNC bcj_powerpc(
 #endif
 
 #ifdef XZ_DEC_IA64
-static noinline_for_stack size_t XZ_FUNC bcj_ia64(
-		struct xz_dec_bcj *s, uint8_t *buf, size_t size)
+static size_t bcj_ia64(struct xz_dec_bcj *s, uint8_t *buf, size_t size)
 {
 	static const uint8_t branch_table[32] = {
 		0, 0, 0, 0, 0, 0, 0, 0,
@@ -262,8 +262,7 @@ static noinline_for_stack size_t XZ_FUNC bcj_ia64(
 #endif
 
 #ifdef XZ_DEC_ARM
-static noinline_for_stack size_t XZ_FUNC bcj_arm(
-		struct xz_dec_bcj *s, uint8_t *buf, size_t size)
+static size_t bcj_arm(struct xz_dec_bcj *s, uint8_t *buf, size_t size)
 {
 	size_t i;
 	uint32_t addr;
@@ -286,8 +285,7 @@ static noinline_for_stack size_t XZ_FUNC bcj_arm(
 #endif
 
 #ifdef XZ_DEC_ARMTHUMB
-static noinline_for_stack size_t XZ_FUNC bcj_armthumb(
-		struct xz_dec_bcj *s, uint8_t *buf, size_t size)
+static size_t bcj_armthumb(struct xz_dec_bcj *s, uint8_t *buf, size_t size)
 {
 	size_t i;
 	uint32_t addr;
@@ -315,8 +313,7 @@ static noinline_for_stack size_t XZ_FUNC bcj_armthumb(
 #endif
 
 #ifdef XZ_DEC_SPARC
-static noinline_for_stack size_t XZ_FUNC bcj_sparc(
-		struct xz_dec_bcj *s, uint8_t *buf, size_t size)
+static size_t bcj_sparc(struct xz_dec_bcj *s, uint8_t *buf, size_t size)
 {
 	size_t i;
 	uint32_t instr;
@@ -345,8 +342,8 @@ static noinline_for_stack size_t XZ_FUNC bcj_sparc(
  * pointers, which could be problematic in the kernel boot code, which must
  * avoid pointers to static data (at least on x86).
  */
-static void XZ_FUNC bcj_apply(struct xz_dec_bcj *s,
-		uint8_t *buf, size_t *pos, size_t size)
+static void bcj_apply(struct xz_dec_bcj *s,
+		      uint8_t *buf, size_t *pos, size_t size)
 {
 	size_t filtered;
 
@@ -399,7 +396,7 @@ static void XZ_FUNC bcj_apply(struct xz_dec_bcj *s,
  * Move the remaining mixture of possibly filtered and unfiltered
  * data to the beginning of temp.
  */
-static void XZ_FUNC bcj_flush(struct xz_dec_bcj *s, struct xz_buf *b)
+static void bcj_flush(struct xz_dec_bcj *s, struct xz_buf *b)
 {
 	size_t copy_size;
 
@@ -417,8 +414,9 @@ static void XZ_FUNC bcj_flush(struct xz_dec_bcj *s, struct xz_buf *b)
  * data in chunks of 1-16 bytes. To hide this issue, this function does
  * some buffering.
  */
-XZ_EXTERN enum xz_ret XZ_FUNC xz_dec_bcj_run(struct xz_dec_bcj *s,
-		struct xz_dec_lzma2 *lzma2, struct xz_buf *b)
+XZ_EXTERN enum xz_ret xz_dec_bcj_run(struct xz_dec_bcj *s,
+				     struct xz_dec_lzma2 *lzma2,
+				     struct xz_buf *b)
 {
 	size_t out_start;
 
@@ -443,8 +441,12 @@ XZ_EXTERN enum xz_ret XZ_FUNC xz_dec_bcj_run(struct xz_dec_bcj *s,
 	 * next filter in the chain. Apply the BCJ filter on the new data
 	 * in the output buffer. If everything cannot be filtered, copy it
 	 * to temp and rewind the output buffer position accordingly.
+	 *
+	 * This needs to be always run when temp.size == 0 to handle a special
+	 * case where the output buffer is full and the next filter has no
+	 * more output coming but hasn't returned XZ_STREAM_END yet.
 	 */
-	if (s->temp.size < b->out_size - b->out_pos) {
+	if (s->temp.size < b->out_size - b->out_pos || s->temp.size == 0) {
 		out_start = b->out_pos;
 		memcpy(b->out + b->out_pos, s->temp.buf, s->temp.size);
 		b->out_pos += s->temp.size;
@@ -467,16 +469,25 @@ XZ_EXTERN enum xz_ret XZ_FUNC xz_dec_bcj_run(struct xz_dec_bcj *s,
 		s->temp.size = b->out_pos - out_start;
 		b->out_pos -= s->temp.size;
 		memcpy(s->temp.buf, b->out + b->out_pos, s->temp.size);
+
+		/*
+		 * If there wasn't enough input to the next filter to fill
+		 * the output buffer with unfiltered data, there's no point
+		 * to try decoding more data to temp.
+		 */
+		if (b->out_pos + s->temp.size < b->out_size)
+			return XZ_OK;
 	}
 
 	/*
-	 * If we have unfiltered data in temp, try to fill by decoding more
-	 * data from the next filter. Apply the BCJ filter on temp. Then we
-	 * hopefully can fill the actual output buffer by copying filtered
-	 * data from temp. A mix of filtered and unfiltered data may be left
-	 * in temp; it will be taken care on the next call to this function.
+	 * We have unfiltered data in temp. If the output buffer isn't full
+	 * yet, try to fill the temp buffer by decoding more data from the
+	 * next filter. Apply the BCJ filter on temp. Then we hopefully can
+	 * fill the actual output buffer by copying filtered data from temp.
+	 * A mix of filtered and unfiltered data may be left in temp; it will
+	 * be taken care on the next call to this function.
 	 */
-	if (s->temp.size > 0) {
+	if (b->out_pos < b->out_size) {
 		/* Make b->out{,_pos,_size} temporarily point to s->temp. */
 		s->out = b->out;
 		s->out_pos = b->out_pos;
@@ -513,7 +524,7 @@ XZ_EXTERN enum xz_ret XZ_FUNC xz_dec_bcj_run(struct xz_dec_bcj *s,
 	return s->ret;
 }
 
-XZ_EXTERN struct xz_dec_bcj * XZ_FUNC xz_dec_bcj_create(bool single_call)
+XZ_EXTERN struct xz_dec_bcj *xz_dec_bcj_create(bool single_call)
 {
 	struct xz_dec_bcj *s = kmalloc(sizeof(*s), GFP_KERNEL);
 	if (s != NULL)
@@ -522,8 +533,7 @@ XZ_EXTERN struct xz_dec_bcj * XZ_FUNC xz_dec_bcj_create(bool single_call)
 	return s;
 }
 
-XZ_EXTERN enum xz_ret XZ_FUNC xz_dec_bcj_reset(
-		struct xz_dec_bcj *s, uint8_t id)
+XZ_EXTERN enum xz_ret xz_dec_bcj_reset(struct xz_dec_bcj *s, uint8_t id)
 {
 	switch (id) {
 #ifdef XZ_DEC_X86

@@ -19,14 +19,13 @@
 #	include <stdint.h>
 #endif
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 /* In Linux, this is used to make extern functions static when needed. */
 #ifndef XZ_EXTERN
 #	define XZ_EXTERN extern
-#endif
-
-/* In Linux, this is used to mark the functions with __init when needed. */
-#ifndef XZ_FUNC
-#	define XZ_FUNC
 #endif
 
 /**
@@ -70,7 +69,7 @@ enum xz_mode {
  * @XZ_UNSUPPORTED_CHECK:   Integrity check type is not supported. Decoding
  *                          is still possible in multi-call mode by simply
  *                          calling xz_dec_run() again.
- *                          NOTE: This return value is used only if
+ *                          Note that this return value is used only if
  *                          XZ_DEC_ANY_CHECK was defined at build time,
  *                          which is not used in the kernel. Unsupported
  *                          check types return XZ_OPTIONS_ERROR if
@@ -105,7 +104,7 @@ enum xz_mode {
  * stream that is truncated or otherwise corrupt.
  *
  * In single-call mode, XZ_BUF_ERROR is returned only when the output buffer
- * is too small, or the compressed input is corrupt in a way that makes the
+ * is too small or the compressed input is corrupt in a way that makes the
  * decoder produce more output than the caller expected. When it is
  * (relatively) clear that the compressed input is truncated, XZ_DATA_ERROR
  * is used instead of XZ_BUF_ERROR.
@@ -196,8 +195,7 @@ struct xz_dec;
  * ready to be used with xz_dec_run(). If memory allocation fails,
  * xz_dec_init() returns NULL.
  */
-XZ_EXTERN struct xz_dec * XZ_FUNC xz_dec_init(
-		enum xz_mode mode, uint32_t dict_max);
+XZ_EXTERN struct xz_dec *xz_dec_init(enum xz_mode mode, uint32_t dict_max);
 
 /**
  * xz_dec_run() - Run the XZ decoder
@@ -207,8 +205,8 @@ XZ_EXTERN struct xz_dec * XZ_FUNC xz_dec_init(
  * The possible return values depend on build options and operation mode.
  * See enum xz_ret for details.
  *
- * NOTE: If an error occurs in single-call mode (return value is not
- * XZ_STREAM_END), b->in_pos and b->out_pos are not modified, and the
+ * Note that if an error occurs in single-call mode (return value is not
+ * XZ_STREAM_END), b->in_pos and b->out_pos are not modified and the
  * contents of the output buffer from b->out[b->out_pos] onward are
  * undefined. This is true even after XZ_BUF_ERROR, because with some filter
  * chains, there may be a second pass over the output buffer, and this pass
@@ -217,7 +215,7 @@ XZ_EXTERN struct xz_dec * XZ_FUNC xz_dec_init(
  * get that amount valid data from the beginning of the stream. You must use
  * the multi-call decoder if you don't want to uncompress the whole stream.
  */
-XZ_EXTERN enum xz_ret XZ_FUNC xz_dec_run(struct xz_dec *s, struct xz_buf *b);
+XZ_EXTERN enum xz_ret xz_dec_run(struct xz_dec *s, struct xz_buf *b);
 
 /**
  * xz_dec_reset() - Reset an already allocated decoder state
@@ -230,14 +228,14 @@ XZ_EXTERN enum xz_ret XZ_FUNC xz_dec_run(struct xz_dec *s, struct xz_buf *b);
  * xz_dec_run(). Thus, explicit call to xz_dec_reset() is useful only in
  * multi-call mode.
  */
-XZ_EXTERN void XZ_FUNC xz_dec_reset(struct xz_dec *s);
+XZ_EXTERN void xz_dec_reset(struct xz_dec *s);
 
 /**
  * xz_dec_end() - Free the memory allocated for the decoder state
  * @s:          Decoder state allocated using xz_dec_init(). If s is NULL,
  *              this function does nothing.
  */
-XZ_EXTERN void XZ_FUNC xz_dec_end(struct xz_dec *s);
+XZ_EXTERN void xz_dec_end(struct xz_dec *s);
 
 /*
  * Standalone build (userspace build or in-kernel build for boot time use)
@@ -253,19 +251,54 @@ XZ_EXTERN void XZ_FUNC xz_dec_end(struct xz_dec *s);
 #	endif
 #endif
 
+/*
+ * If CRC64 support has been enabled with XZ_USE_CRC64, a CRC64
+ * implementation is needed too.
+ */
+#ifndef XZ_USE_CRC64
+#	undef XZ_INTERNAL_CRC64
+#	define XZ_INTERNAL_CRC64 0
+#endif
+#ifndef XZ_INTERNAL_CRC64
+#	ifdef __KERNEL__
+#		error Using CRC64 in the kernel has not been implemented.
+#	else
+#		define XZ_INTERNAL_CRC64 1
+#	endif
+#endif
+
 #if XZ_INTERNAL_CRC32
 /*
  * This must be called before any other xz_* function to initialize
  * the CRC32 lookup table.
  */
-XZ_EXTERN void XZ_FUNC xz_crc32_init(void);
+XZ_EXTERN void xz_crc32_init(void);
 
 /*
  * Update CRC32 value using the polynomial from IEEE-802.3. To start a new
  * calculation, the third argument must be zero. To continue the calculation,
  * the previously returned value is passed as the third argument.
  */
-XZ_EXTERN uint32_t XZ_FUNC xz_crc32(
-		const uint8_t *buf, size_t size, uint32_t crc);
+XZ_EXTERN uint32_t xz_crc32(const uint8_t *buf, size_t size, uint32_t crc);
 #endif
+
+#if XZ_INTERNAL_CRC64
+/*
+ * This must be called before any other xz_* function (except xz_crc32_init())
+ * to initialize the CRC64 lookup table.
+ */
+XZ_EXTERN void xz_crc64_init(void);
+
+/*
+ * Update CRC64 value using the polynomial from ECMA-182. To start a new
+ * calculation, the third argument must be zero. To continue the calculation,
+ * the previously returned value is passed as the third argument.
+ */
+XZ_EXTERN uint64_t xz_crc64(const uint8_t *buf, size_t size, uint64_t crc);
+#endif
+
+#ifdef __cplusplus
+}
+#endif
+
 #endif
