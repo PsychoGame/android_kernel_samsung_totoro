@@ -9,6 +9,7 @@
 
 #include "xz_private.h"
 #include "xz_stream.h"
+#include <linux/kernel.h>
 
 #ifdef XZ_USE_CRC64
 #	define IS_CRC64(check_type) ((check_type) == XZ_CHECK_CRC64)
